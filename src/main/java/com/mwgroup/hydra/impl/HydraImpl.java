@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -17,11 +18,13 @@ import com.mwgroup.hydra.dto.request.*;
 import com.mwgroup.hydra.dto.response.*;
 import com.mwgroup.hydra.model.*;
 import com.mwgroup.hydra.service.HydraService;
+import com.mwgroup.hydra.utils.Utilities;
 
 @Service("HydraImpl")
 public class HydraImpl implements HydraService{
-    @Value("${num.followers}")
-    private String NUM_FOLLOWERS;
+	
+	 @Autowired
+	 Utilities utilities;
 	
 	public SendPostTWResponse sendPostTweet(SendPostTWRequest request) {
 		SendPostTWResponse result = new SendPostTWResponse();
@@ -48,9 +51,12 @@ public class HydraImpl implements HydraService{
 		Integer replyCountPost = 0;
 		Integer retweetCountPost = 0;
 		Integer AllCountPost = 0;
+		
+		String channelClient = "";
+		Integer valPost = 0;
 		try {
 
-			
+			utilities.getDataClients();
 			//Primer objeto DATA
 			for (Entry<String, Object> entry : request.getData().entrySet()) {
 				if (entry.getKey() == "id")
@@ -66,6 +72,10 @@ public class HydraImpl implements HydraService{
 					 datePost=formDate.parse(entry.getValue().toString());
 				}
 				
+				//##############Validación de idioma (puros "es")
+				if (idioma.equals("es"))
+					valPost++;
+				
 				//Validar si existe el objeto referenced_tweets
 				if (entry.getKey() == "referenced_tweets") {
 					IsOriginal = false;
@@ -78,8 +88,11 @@ public class HydraImpl implements HydraService{
 						IsQT = true;
 					if(objRefT.get(0).get("type").toString().equals("replied_to")) 
 						IsReeply = true;
-					
 				}
+				
+				//##############Validación de si un tweet es original
+				/*if (IsOriginal)
+					valPost++;*/
 			}
 			
 			
@@ -100,18 +113,26 @@ public class HydraImpl implements HydraService{
 							replyCountPost = (Integer) publicM.get("reply_count");
 							retweetCountPost = (Integer) publicM.get("retweet_count");
 							AllCountPost = likeCountPost + quoteCountPost + replyCountPost + retweetCountPost;
+							
+							//##############Validación si el post tiene mas de 10 reacciones en total
+							if (AllCountPost >= 10)
+								valPost++;
 						}
 					}
 					
 					System.out.println("=>itemTweet: " + itemTweet);
 				}
 				
-				
 				if(entry.getKey() == "users"){
 					itemUsers = (ArrayList<HashMap<String, Object>>) entry.getValue();
 					for ( HashMap<String, Object> itmUs : itemUsers) {
 						String usrID = itmUs.get("id").toString();
 						isVerificated = (Boolean) itmUs.get("verified");
+						
+						//##############Validación de la cuenta del usuario
+						if (isVerificated)
+							valPost++;
+						
 						urlPost = pathTW + itmUs.get("username").toString() + "/status/" + postid;
 						if (authorid.equals(usrID)) {
 							//Esta es la data del usuario que posteo el TWEET
@@ -119,12 +140,22 @@ public class HydraImpl implements HydraService{
 							publicM = (HashMap<String, Object>) itmUs.get("public_metrics");
 							followersUser = (Integer) publicM.get("followers_count");
 							
+							//##############Validación de que el usuario tenga más de 10000 seguidores
+							if (followersUser >= 10000)
+								valPost++;
+							
 							try {
-								locationUser = itmUs.get("location").toString();
+								//ValidateLocationUser
+								String location = utilities.cleanText(itmUs.get("location").toString());
+								
+								//##############Validación de que el usuario sea de México
+								if (location.contains("mexico"))
+									valPost++;
+								
+								locationUser = location;
 							} catch (Exception e) {
 								locationUser = "";
 							}
-							
 							System.out.println("=>followers_count: " + publicM.get("followers_count").toString());
 							System.out.println("=>following_count: " + publicM.get("following_count").toString());
 						}
@@ -133,9 +164,28 @@ public class HydraImpl implements HydraService{
 				System.out.println("=>Entry: " + entry.getValue().toString());
 			}
 			
-					
-			result.setMessage("OK");
-			result.setCode(200);
+			//Tercer objeto matching_rules
+			for (Object entry : request.getMatching_rules()) {
+				HashMap<String, Object> itemMR = new HashMap<String, Object>();
+				itemMR = (HashMap<String, Object>) entry;
+				channelClient = itemMR.get("tag").toString().split(":")[1];
+				System.out.print("=> Client and Channel: " + itemMR.get("tag"));
+			}
+			
+			if (valPost >= 5) {
+				//Envío del Tweet al canal
+				SendPostModel itemTW = new SendPostModel();
+				itemTW.setText(message);
+				itemTW.setTo(channelClient);
+				utilities.sendPostTweet(itemTW);
+				
+				result.setMessage("OK");
+				result.setCode(200);
+				return result;
+			}
+			
+			result.setMessage("NOT-SEND");
+			result.setCode(202);
 			return result;
 		} catch (Exception e) {
 			
