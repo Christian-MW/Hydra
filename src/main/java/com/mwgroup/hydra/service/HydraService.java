@@ -7,5 +7,5 @@ import com.mwgroup.hydra.dto.response.*;
 
 @Component
 public interface HydraService {
-	SendPostTWResponse sendPostTweet(SendPostTWRequest request);
+	void sendPostTweet(SendPostTWRequest request);
 }

@@ -3,6 +3,8 @@ package com.mwgroup.hydra.controller;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -31,8 +33,26 @@ public class HydraRest {
 		
 		Gson gson = new Gson();
 		System.out.println(gson.toJson(request));
-		
-		return hydraService.sendPostTweet(request);
+		System.out.println("Iniciando");
+		try {
+			ExecutorService exec1 = Executors.newSingleThreadExecutor();
+            exec1.submit(() -> {
+            	
+            	System.out.println("Iniciando la validación del mensaje");
+    			hydraService.sendPostTweet(request);
+    			System.out.println("Finalizando la validación del mensaje");
+                exec1.shutdown();
+            }); 
+			
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		System.out.println("Respondiendo");
+		SendPostTWResponse result = new SendPostTWResponse();
+		result.setMessage("OK");
+		result.setCode(200);
+		return result;
 	}
 	
 	

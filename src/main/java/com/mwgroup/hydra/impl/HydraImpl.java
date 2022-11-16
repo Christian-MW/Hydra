@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import org.apache.logging.log4j.util.Strings;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -26,7 +27,7 @@ public class HydraImpl implements HydraService{
 	 @Autowired
 	 Utilities utilities;
 	
-	public SendPostTWResponse sendPostTweet(SendPostTWRequest request) {
+	public void sendPostTweet(SendPostTWRequest request) {
 		SendPostTWResponse result = new SendPostTWResponse();
 		Gson gson = new Gson();
 		String pathTW = "https://twitter.com/";
@@ -34,6 +35,7 @@ public class HydraImpl implements HydraService{
 		String idioma = "";
 		String postid = "";
 		String message = "";
+		String typeTweet = "original";
 		Boolean IsOriginal = true;
 		Boolean IsRT = false;
 		Boolean IsQT = false;
@@ -54,144 +56,281 @@ public class HydraImpl implements HydraService{
 		
 		String channelClient = "";
 		Integer valPost = 0;
+		
+		String created_at ="";
+		String text="";
+		String url="https://twitter.com/{{username}}/status/{{idTweet}}";
 		try {
 
-			utilities.getDataClients();
-			//Primer objeto DATA
-			for (Entry<String, Object> entry : request.getData().entrySet()) {
-				if (entry.getKey() == "id")
-					postid = entry.getValue().toString();
-				if (entry.getKey() == "lang")
-					idioma = entry.getValue().toString();
-				if(entry.getKey() == "text")
-					message = entry.getValue().toString();
-				if(entry.getKey() == "author_id")
-					authorid = entry.getValue().toString();
-				if(entry.getKey() == "created_at") {
-					 SimpleDateFormat formDate=new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
-					 datePost=formDate.parse(entry.getValue().toString());
-				}
-				
-				//##############Validación de idioma (puros "es")
-				if (idioma.equals("es"))
-					valPost++;
-				
-				//Validar si existe el objeto referenced_tweets
-				if (entry.getKey() == "referenced_tweets") {
-					IsOriginal = false;
-					ArrayList<HashMap<String, String>> objRefT = new ArrayList<HashMap<String, String>>();
-					objRefT = (ArrayList<HashMap<String, String>>) entry.getValue();
-					
-					if(objRefT.get(0).get("type").toString().equals("retweeted")) 
-						IsRT = true;
-					if(objRefT.get(0).get("type").toString().equals("quoted")) 
-						IsQT = true;
-					if(objRefT.get(0).get("type").toString().equals("replied_to")) 
-						IsReeply = true;
-				}
-				
-				//##############Validación de si un tweet es original
-				/*if (IsOriginal)
-					valPost++;*/
-			}
-			
-			
-			
-			//Segundo objeto includes
-			for (Entry<String, Object> entry : request.getIncludes().entrySet()) {
-				ArrayList<HashMap<String, Object>> itemTweet = new ArrayList<HashMap<String, Object>>();
-				ArrayList<HashMap<String, Object>> itemUsers = new ArrayList<HashMap<String, Object>>();
-				if(entry.getKey() == "tweets"){
-					itemTweet = (ArrayList<HashMap<String, Object>>) entry.getValue();
-					for ( HashMap<String, Object> tweetUs : itemTweet) {
-						String tweetID = tweetUs.get("author_id").toString();
-						if (authorid.equals(tweetID)) {
-							HashMap<String, Object> publicM = new HashMap<String, Object>();
-							publicM = (HashMap<String, Object>) tweetUs.get("public_metrics");
-							likeCountPost = (Integer) publicM.get("like_count");
-							quoteCountPost = (Integer) publicM.get("quote_count");
-							replyCountPost = (Integer) publicM.get("reply_count");
-							retweetCountPost = (Integer) publicM.get("retweet_count");
-							AllCountPost = likeCountPost + quoteCountPost + replyCountPost + retweetCountPost;
-							
-							//##############Validación si el post tiene mas de 10 reacciones en total
-							if (AllCountPost >= 10)
-								valPost++;
-						}
-					}
-					
-					System.out.println("=>itemTweet: " + itemTweet);
-				}
-				
-				if(entry.getKey() == "users"){
-					itemUsers = (ArrayList<HashMap<String, Object>>) entry.getValue();
-					for ( HashMap<String, Object> itmUs : itemUsers) {
-						String usrID = itmUs.get("id").toString();
-						isVerificated = (Boolean) itmUs.get("verified");
-						
-						//##############Validación de la cuenta del usuario
-						if (isVerificated)
-							valPost++;
-						
-						urlPost = pathTW + itmUs.get("username").toString() + "/status/" + postid;
-						if (authorid.equals(usrID)) {
-							//Esta es la data del usuario que posteo el TWEET
-							HashMap<String, Object> publicM = new HashMap<String, Object>();
-							publicM = (HashMap<String, Object>) itmUs.get("public_metrics");
-							followersUser = (Integer) publicM.get("followers_count");
-							
-							//##############Validación de que el usuario tenga más de 10000 seguidores
-							if (followersUser >= 10000)
-								valPost++;
-							
-							try {
-								//ValidateLocationUser
-								String location = utilities.cleanText(itmUs.get("location").toString());
-								
-								//##############Validación de que el usuario sea de México
-								if (location.contains("mexico"))
-									valPost++;
-								
-								locationUser = location;
-							} catch (Exception e) {
-								locationUser = "";
-							}
-							System.out.println("=>followers_count: " + publicM.get("followers_count").toString());
-							System.out.println("=>following_count: " + publicM.get("following_count").toString());
-						}
-					}
-				}
-				System.out.println("=>Entry: " + entry.getValue().toString());
-			}
-			
+			List<Searches> searches =utilities.getDataClients(); 
+			Searches src = new Searches();
+			String themeAndChannel ="";
 			//Tercer objeto matching_rules
 			for (Object entry : request.getMatching_rules()) {
 				HashMap<String, Object> itemMR = new HashMap<String, Object>();
 				itemMR = (HashMap<String, Object>) entry;
+				themeAndChannel = itemMR.get("tag").toString();
 				channelClient = itemMR.get("tag").toString().split(":")[1];
 				System.out.print("=> Client and Channel: " + itemMR.get("tag"));
 			}
 			
-			if (valPost >= 5) {
-				//Envío del Tweet al canal
-				SendPostModel itemTW = new SendPostModel();
-				itemTW.setText(message);
-				itemTW.setTo(channelClient);
-				utilities.sendPostTweet(itemTW);
-				
-				result.setMessage("OK");
-				result.setCode(200);
-				return result;
+			for (int i = 0; i < searches.size(); i++) {
+				if(themeAndChannel.equals(searches.get(i).getTheme()+":"+searches.get(i).getChannel())) {
+					src = searches.get(i);
+					break;
+				}
 			}
 			
-			result.setMessage("NOT-SEND");
-			result.setCode(202);
-			return result;
+			if(Strings.isEmpty(src.getChannel())){
+				//No hay canal a donde enviar el mensaje, se cancela el proceso
+			}else {
+				//Se realiza el proceso para ver si se tiene que enviar a un canal
+				
+				
+				System.out.println(searches);
+				//Primer objeto DATA
+				for (Entry<String, Object> entry : request.getData().entrySet()) {
+					if (entry.getKey() == "id")
+						postid = entry.getValue().toString();
+					if (entry.getKey() == "lang")
+						idioma = entry.getValue().toString();
+					if(entry.getKey() == "text")
+						message = entry.getValue().toString();
+					if(entry.getKey() == "author_id")
+						authorid = entry.getValue().toString();
+					if(entry.getKey() == "created_at") {
+						 SimpleDateFormat formDate=new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+						 datePost=formDate.parse(entry.getValue().toString());
+						 created_at = entry.getValue().toString().substring(0, 19).replace("T", " ");
+					}
+							
+					//Validar si existe el objeto referenced_tweets
+					if (entry.getKey() == "referenced_tweets") {
+						IsOriginal = false;
+						ArrayList<HashMap<String, String>> objRefT = new ArrayList<HashMap<String, String>>();
+						objRefT = (ArrayList<HashMap<String, String>>) entry.getValue();
+						
+						typeTweet = objRefT.get(0).get("type").toString();						
+					}
+					
+				}
+				
+				
+				
+				//Segundo objeto includes
+				for (Entry<String, Object> entry : request.getIncludes().entrySet()) {
+					ArrayList<HashMap<String, Object>> itemTweet = new ArrayList<HashMap<String, Object>>();
+					ArrayList<HashMap<String, Object>> itemUsers = new ArrayList<HashMap<String, Object>>();
+					if(entry.getKey() == "tweets"){
+						itemTweet = (ArrayList<HashMap<String, Object>>) entry.getValue();
+						for ( HashMap<String, Object> tweetUs : itemTweet) {
+							String tweetID = tweetUs.get("author_id").toString();
+							if (authorid.equals(tweetID)) {
+								HashMap<String, Object> publicM = new HashMap<String, Object>();
+								publicM = (HashMap<String, Object>) tweetUs.get("public_metrics");
+								likeCountPost = (Integer) publicM.get("like_count");
+								quoteCountPost = (Integer) publicM.get("quote_count");
+								replyCountPost = (Integer) publicM.get("reply_count");
+								retweetCountPost = (Integer) publicM.get("retweet_count");
+								AllCountPost = likeCountPost + quoteCountPost + replyCountPost + retweetCountPost;
+															
+							}
+						}
+						
+						System.out.println("=>itemTweet: " + itemTweet);
+					}
+					
+					if(entry.getKey() == "users"){
+						itemUsers = (ArrayList<HashMap<String, Object>>) entry.getValue();
+						for ( HashMap<String, Object> itmUs : itemUsers) {
+							String usrID = itmUs.get("id").toString();													
+							urlPost = pathTW + itmUs.get("username").toString() + "/status/" + postid;
+							if (authorid.equals(usrID)) {
+								//Esta es la data del usuario que posteo el TWEET
+								HashMap<String, Object> publicM = new HashMap<String, Object>();
+								publicM = (HashMap<String, Object>) itmUs.get("public_metrics");
+								followersUser = (Integer) publicM.get("followers_count");
+								isVerificated = (Boolean) itmUs.get("verified");
+								url = url.replace("{{username}}", (String) itmUs.get("username"));
+								
+								try {
+									//ValidateLocationUser
+									if(Strings.isEmpty(locationUser)) {
+										String location = utilities.cleanText(itmUs.get("location").toString());
+																				
+										locationUser = location;
+									}
+								} catch (Exception e) {
+									locationUser = "";
+								}
+								System.out.println("=>followers_count: " + publicM.get("followers_count").toString());
+								System.out.println("=>following_count: " + publicM.get("following_count").toString());
+							}
+						}
+					}
+					System.out.println("=>Entry: " + entry.getValue().toString());
+				}
+				
+				
+				
+				
+				int valToComply = 0;
+				valPost = 0;
+				boolean isOK = false;
+				String rulesFails = "";
+				//Verificar localidad
+				if(src.getRules().getLocation().size() > 0) {
+					valToComply++;
+					isOK = false;
+					for (int i = 0; i < src.getRules().getLocation().size(); i++) {
+						if(locationUser.contains(src.getRules().getLocation().get(i))) {
+							valPost++;
+							isOK = true;
+							break;
+						}
+					}
+					if(!isOK)
+						rulesFails +="Location";
+				}
+				
+				//Verificar lenguaje
+				if(src.getRules().getLanguage().size() > 0) {
+					valToComply++;
+					isOK = false;
+					for (int i = 0; i < src.getRules().getLanguage().size(); i++) {
+						if(src.getRules().getLanguage().get(i).equals(idioma)) {
+							valPost++;
+							isOK = true;
+							break;
+						}
+					}
+					if(!isOK)
+						rulesFails +=" Languaje";
+				}
+				
+				//Verificar typo de tweet si es origina, rt, qt etc
+				if(src.getRules().getTypeTweet().size() > 0) {
+					valToComply++;
+					isOK= false;
+					for (int i = 0; i < src.getRules().getTypeTweet().size(); i++) {
+						if(src.getRules().getTypeTweet().get(i).equals(typeTweet)) {
+							valPost++;
+							isOK =true;
+							break;
+						}
+					}
+					if(!isOK)
+						rulesFails +=" TtypeTweet";
+				}
+				
+				//Verificar tipo de cuenta si esta o no verificada 
+				if(Strings.isNotEmpty(src.getRules().getVerifiedUser())) {
+					valToComply++;
+					isOK = false;
+					if(isVerificated.toString().equals(src.getRules().getVerifiedUser()) || 
+							src.getRules().getVerifiedUser().toLowerCase().equals("all")
+							||src.getRules().getVerifiedUser().toLowerCase().equals("todos")) {
+						valPost++;
+						isOK = true;
+					}
+					
+					if(!isOK)
+						rulesFails +=" VerifiedUser";
+				
+				}
+				
+				//Verificar regla de seguidores en cuenta
+				if(src.getRules().getMinFollowers() > 0) {
+					valToComply++;
+					isOK = false;
+					if(src.getRules().getMaxFollowers() > 0) {
+						if(src.getRules().getMinFollowers() <= src.getRules().getMaxFollowers()) {
+							//Sea plica la regla del between 
+							if(followersUser >= src.getRules().getMinFollowers() &&
+									src.getRules().getMaxFollowers() >= followersUser) {
+								valPost++;
+								isOK = true;
+							}
+						}else {
+							//Se aplica la regla que las reaccion sean mayor o igual al minimo de reacciones definido
+							if(followersUser >= src.getRules().getMinFollowers()) {
+								valPost++;
+								isOK = true;
+							}
+						}
+					}else {
+						//Se aplica la regla que las reaccion sean mayor o igual al minimo de reacciones definido
+						if(followersUser >= src.getRules().getMinFollowers()) {
+							valPost++;
+							isOK = true;
+						}
+					}
+					
+					if(!isOK)
+						rulesFails +=" Followers";
+				}
+				
+				//Verificar minimo de reacciones
+				if(src.getRules().getMinNumReactions() > 0) {
+					valToComply++;
+					isOK = false;
+					if(src.getRules().getMaxNumReactions() > 0) {
+						if(src.getRules().getMinNumReactions() <= src.getRules().getMaxNumReactions()) {
+							//Sea plica la regla del between 
+							if(AllCountPost >= src.getRules().getMinNumReactions() &&
+									src.getRules().getMaxNumReactions() >= AllCountPost) {
+								valPost++;
+								isOK = true;
+							}
+						}else {
+							//Se aplica la regla que las reaccion sean mayor o igual al minimo de reacciones definido
+							if(AllCountPost >= src.getRules().getMinNumReactions()) {
+								valPost++;
+								isOK = true;
+							}
+						}
+					}else {
+						//Se aplica la regla que las reaccion sean mayor o igual al minimo de reacciones definido
+						if(AllCountPost >= src.getRules().getMinNumReactions()) {
+							valPost++;
+							isOK = true;
+						}
+					}
+
+					if(!isOK)
+						rulesFails +=" Reactions";
+					
+				}
+					
+				//Verificación final que se cumplan todas las validaciones
+				if (valPost >= valToComply) {
+					//Envío del Tweet al canal
+					url = url.replace("{{idTweet}}", postid);	
+					
+					String msg = utilities.getMessage(created_at, message, url).toString();
+					
+					SendPostModel itemTW = new SendPostModel();
+					itemTW.setText(msg);
+					itemTW.setTo(channelClient);
+					utilities.sendPostTweet(itemTW);
+					
+					result.setMessage("OK");
+					result.setCode(200);
+					//return result;
+				}else {
+					result.setMessage("NOT-SEND");
+					result.setCode(202);
+					System.out.println("No cumple con todas las validasiones");
+					System.out.println("Reglas que no se cumplieron ["+rulesFails.replaceAll(" ", ",")+"]");
+				}
+			}
+		
 		} catch (Exception e) {
 			
 			result.setMessage("Error");
 			result.setCode(500);
-			return result;
+			//return result;
 		}
 	}
+
 }
