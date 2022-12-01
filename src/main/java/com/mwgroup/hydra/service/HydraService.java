@@ -8,4 +8,5 @@ import com.mwgroup.hydra.dto.response.*;
 @Component
 public interface HydraService {
 	void sendPostTweet(SendPostTWRequest request);
+	SendPostTWResponse validatePostCampaign(SendPostTWRequest request);
 }

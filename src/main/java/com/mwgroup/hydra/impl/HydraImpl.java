@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import org.apache.log4j.Logger;
 import org.apache.logging.log4j.util.Strings;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,13 +22,17 @@ import com.mwgroup.hydra.model.*;
 import com.mwgroup.hydra.service.HydraService;
 import com.mwgroup.hydra.utils.Utilities;
 
+
 @Service("HydraImpl")
 public class HydraImpl implements HydraService{
 	
 	 @Autowired
 	 Utilities utilities;
+	 private static Logger log = Logger.getLogger(HydraImpl.class);
 	
 	public void sendPostTweet(SendPostTWRequest request) {
+		log.info("#############################___sendPostTweet");
+		
 		SendPostTWResponse result = new SendPostTWResponse();
 		Gson gson = new Gson();
 		String pathTW = "https://twitter.com/";
@@ -303,9 +308,10 @@ public class HydraImpl implements HydraService{
 				}
 					
 				//Verificación final que se cumplan todas las validaciones
+				url = url.replace("{{idTweet}}", postid);	
 				if (valPost >= valToComply) {
 					//Envío del Tweet al canal
-					url = url.replace("{{idTweet}}", postid);	
+					
 					
 					String msg = utilities.getMessage(created_at, message, url).toString();
 					
@@ -320,17 +326,85 @@ public class HydraImpl implements HydraService{
 				}else {
 					result.setMessage("NOT-SEND");
 					result.setCode(202);
-					System.out.println("No cumple con todas las validasiones");
-					System.out.println("Reglas que no se cumplieron ["+rulesFails.replaceAll(" ", ",")+"]");
+					log.info("No cumple con todas las validasiones");
+					log.info("==>URL post Not SEND: " + url);
+					log.info("Reglas que no se cumplieron ["+rulesFails.replaceAll(" ", ",")+"]");
 				}
 			}
 		
 		} catch (Exception e) {
 			
+			log.error("###ERROR AL PROCESAR EL LOG__");
+			log.error(e.getMessage());
 			result.setMessage("Error");
 			result.setCode(500);
 			//return result;
 		}
 	}
+	
+	
+	public SendPostTWResponse validatePostCampaign(SendPostTWRequest request) {
+		log.info("#####################__validatePostCampaign__#####################");
+		Gson gson = new Gson();
+		log.info(gson.toJson(request));
+		SendPostTWResponse result = new SendPostTWResponse();
+		
+		try {
+			String pathTW = "https://twitter.com/";
+			String authorid = "";
+			String idioma = "";
+			String postid = "";
+			String message = "";
+			String typeTweet = "original";
+			Boolean IsOriginal = true;
+			Boolean IsRT = false;
+			Boolean IsQT = false;
+			Boolean IsReeply = false;
+			Boolean isVerificated = false;
+			String locationUser = "";
+			String urlPost = "";
+			Date datePost = new Date();
+			
+			Integer countPMetrics = 0;
+			Integer followersUser = 0;
+			
+			Integer likeCountPost = 0;
+			Integer quoteCountPost = 0;
+			Integer replyCountPost = 0;
+			Integer retweetCountPost = 0;
+			Integer AllCountPost = 0;
+			
+			String channelClient = "";
+			Integer valPost = 0;
+			
+			String created_at ="";
+			String text="";
+			String url="https://twitter.com/{{username}}/status/{{idTweet}}";
+			
+			String nameCampaign = "";
+			String urlFileCampaign ="https://docs.google.com/spreadsheets/d/{{urlfile}}/edit";
+			
+			//Tercer objeto matching_rules
+			for (Object entry : request.getMatching_rules()) {
+				HashMap<String, Object> itemMR = new HashMap<String, Object>();
+				itemMR = (HashMap<String, Object>) entry;
+				//themeAndChannel = itemMR.get("tag").toString();
+				nameCampaign = itemMR.get("tag").toString().split(":")[0];
+				urlFileCampaign = urlFileCampaign.replace("{{urlfile}}", itemMR.get("tag").toString().split(":")[1]);
+				System.out.print("=> Client and Channel: " + itemMR.get("tag"));
+			}
+			
+			
+			return result;
+		} catch (Exception e) {
+			log.error("###_ERROR___validatePostCampaign__###");
+			log.error(e.getMessage());
+			
+			result.setCode(500);
+			result.setMessage("ERROR: "+e.getMessage() );
+			return result;
+		}
+	}
+	
 
 }
