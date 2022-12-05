@@ -1,26 +1,22 @@
 package com.mwgroup.hydra.utils;
-
-import java.io.InputStream;
-import java.io.InputStreamReader;
+ 
 import java.lang.reflect.Type;
-import java.net.URI;
-import java.net.URL;
-import java.net.URLConnection;
+import java.net.URI; 
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.net.http.*; 
+import java.net.http.*;
 
+import org.apache.log4j.Logger;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.gson.Gson;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParser;
+import com.google.gson.Gson; 
 import com.google.gson.reflect.TypeToken;
+import com.mwgroup.hydra.impl.HydraImpl;
 import com.mwgroup.hydra.model.Searches;
 import com.mwgroup.hydra.model.SendPostModel;
 
@@ -30,15 +26,18 @@ public class Utilities {
     private String URL_SEND_POST;
     @Value("${token.post.tw}")
     private String TOKEN_TW;
-    @Value("${url.json.searches}")
+    //@Value("${url.json.searches}")
+    @Value("${url.get.search}")
     private String URL_SEARCHES;
 	
+    private static Logger log = Logger.getLogger(HydraImpl.class);
+    
 	public Boolean sendPostTweet(SendPostModel req) {
 		Boolean result = false;
 		try {
-			System.out.println("");
-			System.out.println("sendPostTweet");
-			System.out.println(URL_SEND_POST);
+			log.info("");
+			log.info("sendPostTweet");
+			log.info(URL_SEND_POST);
 			req.setToken("");
 		    req.setChannel("telegram");
 		    req.setType("chat");
@@ -52,14 +51,14 @@ public class Utilities {
 			var client = HttpClient.newHttpClient();
 			var response = client.send(request, HttpResponse.BodyHandlers.ofString());
 			
-			System.out.println(response.statusCode());
-			System.out.println(response.body());
-			System.out.println(response.body().getClass());
+			log.info(response.statusCode());
+			log.info(response.body());
+			log.info(response.body().getClass());
 			ObjectMapper mapper = new ObjectMapper();
 			Map<String, Object> map = mapper.readValue(response.body(), Map.class);
 			var sended = map.get("sended");
 			if(!(Boolean)sended) {
-				System.out.println("No fue posible enviar el mensaje");
+				log.info("No fue posible enviar el mensaje");
 			}
 
 			return result;
@@ -79,8 +78,8 @@ public class Utilities {
 					.build();
 			var client = HttpClient.newHttpClient();
 			var response = client.send(rq, HttpResponse.BodyHandlers.ofString());
-			System.out.println(response.statusCode());
-			System.out.println(response.body().getClass());
+			log.info(response.statusCode());
+			log.info(response.body().getClass());
 			Type listType = new TypeToken<List<Searches>>() {}.getType();
 			result = new Gson().fromJson(response.body(), listType);
 			return result;
@@ -126,4 +125,35 @@ public class Utilities {
 		}
 		return sb;
 	}
+
+	public Map<String, Object> post(String url, String bodyJson) {
+		try {
+			log.info("Post a ====> "+url);
+			log.info(bodyJson);
+			
+			var request = HttpRequest.newBuilder()
+					.uri(URI.create(url))
+					.header("Content-type", "application/json")
+					.POST(HttpRequest.BodyPublishers.ofString(bodyJson))				
+					.build();
+			var client = HttpClient.newHttpClient();
+			var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+			
+			log.info(response.statusCode());
+			//log.info(response.body());
+			ObjectMapper mapper = new ObjectMapper();
+			Map<String, Object> map = mapper.readValue(response.body(), Map.class);
+	
+			return map;
+			
+		} catch (Exception e) {
+			// TODO: handle exception
+			log.info("Error en la funcion post");
+			log.error(e);
+			return null;
+		}
+		
+	}
+	
+
 }

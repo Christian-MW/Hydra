@@ -29,6 +29,12 @@ public class HydraImpl implements HydraService{
 	 @Autowired
 	 Utilities utilities;
 	 private static Logger log = Logger.getLogger(HydraImpl.class);
+	 
+	 @Value("${url.get.search}")
+	 private String URL_GET_SEARCH;
+
+	 @Value("${url.campaign.user.update}")
+	 private String URL_CAMPAING_USER_UPDATE;
 	
 	public void sendPostTweet(SendPostTWRequest request) {
 		log.info("#############################___sendPostTweet");
@@ -49,6 +55,7 @@ public class HydraImpl implements HydraService{
 		String locationUser = "";
 		String urlPost = "";
 		Date datePost = new Date();
+		String nickname = "";
 		
 		Integer countPMetrics = 0;
 		Integer followersUser = 0;
@@ -68,7 +75,8 @@ public class HydraImpl implements HydraService{
 		try {
 
 			List<Searches> searches =utilities.getDataClients(); 
-			Searches src = new Searches();
+			//Searches src = new Searches();
+			List<Searches> listMatchingRulesSrc= new ArrayList<Searches>();
 			String themeAndChannel ="";
 			//Tercer objeto matching_rules
 			for (Object entry : request.getMatching_rules()) {
@@ -77,21 +85,17 @@ public class HydraImpl implements HydraService{
 				themeAndChannel = itemMR.get("tag").toString();
 				channelClient = itemMR.get("tag").toString().split(":")[1];
 				System.out.print("=> Client and Channel: " + itemMR.get("tag"));
-			}
-			
-			for (int i = 0; i < searches.size(); i++) {
-				if(themeAndChannel.equals(searches.get(i).getTheme()+":"+searches.get(i).getChannel())) {
-					src = searches.get(i);
-					break;
+				for (int i = 0; i < searches.size(); i++) {
+					if(themeAndChannel.equals(searches.get(i).getTheme()+":"+searches.get(i).getChannel())) {
+						listMatchingRulesSrc.add(searches.get(i));
+						break;
+					}
 				}
 			}
 			
-			if(Strings.isEmpty(src.getChannel())){
-				//No hay canal a donde enviar el mensaje, se cancela el proceso
-			}else {
-				//Se realiza el proceso para ver si se tiene que enviar a un canal
-				
-				
+			for (Searches src : listMatchingRulesSrc) {
+				channelClient = src.getChannel();
+	
 				System.out.println(searches);
 				//Primer objeto DATA
 				for (Entry<String, Object> entry : request.getData().entrySet()) {
@@ -148,7 +152,8 @@ public class HydraImpl implements HydraService{
 					if(entry.getKey() == "users"){
 						itemUsers = (ArrayList<HashMap<String, Object>>) entry.getValue();
 						for ( HashMap<String, Object> itmUs : itemUsers) {
-							String usrID = itmUs.get("id").toString();													
+							String usrID = itmUs.get("id").toString();		
+							nickname = itmUs.get("username").toString();
 							urlPost = pathTW + itmUs.get("username").toString() + "/status/" + postid;
 							if (authorid.equals(usrID)) {
 								//Esta es la data del usuario que posteo el TWEET
@@ -307,28 +312,36 @@ public class HydraImpl implements HydraService{
 					
 				}
 					
-				//Verificación final que se cumplan todas las validaciones
-				url = url.replace("{{idTweet}}", postid);	
-				if (valPost >= valToComply) {
-					//Envío del Tweet al canal
-					
-					
-					String msg = utilities.getMessage(created_at, message, url).toString();
-					
-					SendPostModel itemTW = new SendPostModel();
-					itemTW.setText(msg);
-					itemTW.setTo(channelClient);
-					utilities.sendPostTweet(itemTW);
-					
-					result.setMessage("OK");
-					result.setCode(200);
-					//return result;
+
+				//Verificar accion para campañas
+				actionCampaing(src, nickname,valPost >= valToComply);
+				
+				if(Strings.isEmpty(src.getChannel())){
+					//No hay canal a donde enviar el mensaje, se cancela el proceso
 				}else {
-					result.setMessage("NOT-SEND");
-					result.setCode(202);
-					log.info("No cumple con todas las validasiones");
-					log.info("==>URL post Not SEND: " + url);
-					log.info("Reglas que no se cumplieron ["+rulesFails.replaceAll(" ", ",")+"]");
+					//Se realiza el proceso para ver si se tiene que enviar a un canal
+					//Verificación final que se cumplan todas las validaciones
+					url = url.replace("{{idTweet}}", postid);					
+					if (valPost >= valToComply) {					
+						//Envío del Tweet al canal		
+						campaign.user.update
+						String msg = utilities.getMessage(created_at, message, url).toString();
+						
+						SendPostModel itemTW = new SendPostModel();
+						itemTW.setText(msg);
+						itemTW.setTo(channelClient);
+						utilities.sendPostTweet(itemTW);
+						
+						result.setMessage("OK");
+						result.setCode(200);
+						//return result;
+					}else {
+						result.setMessage("NOT-SEND");
+						result.setCode(202);
+						log.info("No cumple con todas las validasiones");
+						log.info("==>URL post Not SEND: " + url);
+						log.info("Reglas que no se cumplieron ["+rulesFails.replaceAll(" ", ",")+"]");
+					}
 				}
 			}
 		
@@ -407,4 +420,62 @@ public class HydraImpl implements HydraService{
 	}
 	
 
+	private void actionCampaing(Searches src, String nickname, boolean fullRules ) {
+		log.info("############ actionCampaing");
+		try {
+			
+			if(Strings.isNotEmpty(src.getSheet())) {
+				String user = "";
+				String start = "";
+				if(src.getUsers().size() > 0) {
+					start = src.getUsers().get(0).substring(0, 1);
+				}
+				
+				for (String u : src.getUsers()) {
+					if(u.toLowerCase() == nickname.toLowerCase()
+							|| u.toLowerCase() == "@"+nickname.toLowerCase()
+							||u.toLowerCase() == nickname.replace("@", "").toLowerCase()) {
+						
+						user = u;
+						break;
+					}
+				}
+				
+				Map<String,String> rq = new HashMap<String, String>();
+				rq.put("sheet", src.getSheet());
+				if(fullRules) {
+					log.info("Reglas cumplidas");
+					//Posible nuevo usuario
+					if(user == "") {
+						//nuevo usuario
+						log.info("Es un usuario nuevo");
+						rq.put("type", "add");
+						rq.put("account", start+nickname);
+					}else {
+						log.info("Actualizando usuario");
+						rq.put("type", "update");
+						rq.put("account", user);
+					}
+					
+					utilities.post(URL_CAMPAING_USER_UPDATE, new Gson().toJson(rq));
+					
+				}else {
+					if(user != "") { 
+						log.info("Actualizando usuario");
+						rq.put("type", "update");
+						rq.put("account", user);
+						utilities.post(URL_CAMPAING_USER_UPDATE, new Gson().toJson(rq));
+					}else {
+						log.info("Es un usuario nuevo pero no cumplio con las reglas!!!");
+					}
+				}
+			}			
+			
+		} catch (Exception e) {
+			// TODO: handle exception
+			log.info("Error en actionCampaing");
+			log.error(e);
+		}
+	}
+	
 }
