@@ -86,7 +86,7 @@ public class HydraImpl implements HydraService{
 				channelClient = itemMR.get("tag").toString().split(":")[1];
 				System.out.print("=> Client and Channel: " + itemMR.get("tag"));
 				for (int i = 0; i < searches.size(); i++) {
-					if(themeAndChannel.equals(searches.get(i).getTheme()+":"+searches.get(i).getChannel())) {
+					if(themeAndChannel.equals(searches.get(i).getTheme()+":"+searches.get(i).getChannel()+":"+ searches.get(i).getSheet())) {
 						listMatchingRulesSrc.add(searches.get(i));
 						break;
 					}
@@ -315,7 +315,9 @@ public class HydraImpl implements HydraService{
 
 				//Verificar accion para campañas
 				actionCampaing(src, nickname,valPost >= valToComply);
-				
+				log.info("===> LA CAMPAÑA No cumple con todas las validasiones");
+				log.info("==>URL post Not SEND: " + url);
+				log.info("Reglas que no se cumplieron ["+rulesFails.replaceAll(" ", ",")+"]");
 				if(Strings.isEmpty(src.getChannel())){
 					//No hay canal a donde enviar el mensaje, se cancela el proceso
 				}else {
@@ -324,7 +326,7 @@ public class HydraImpl implements HydraService{
 					url = url.replace("{{idTweet}}", postid);					
 					if (valPost >= valToComply) {					
 						//Envío del Tweet al canal		
-						campaign.user.update
+						//campaign.user.update;
 						String msg = utilities.getMessage(created_at, message, url).toString();
 						
 						SendPostModel itemTW = new SendPostModel();
@@ -338,7 +340,7 @@ public class HydraImpl implements HydraService{
 					}else {
 						result.setMessage("NOT-SEND");
 						result.setCode(202);
-						log.info("No cumple con todas las validasiones");
+						log.info(" LA BUSQUEDA No cumple con todas las validasiones");
 						log.info("==>URL post Not SEND: " + url);
 						log.info("Reglas que no se cumplieron ["+rulesFails.replaceAll(" ", ",")+"]");
 					}
@@ -432,9 +434,9 @@ public class HydraImpl implements HydraService{
 				}
 				
 				for (String u : src.getUsers()) {
-					if(u.toLowerCase() == nickname.toLowerCase()
-							|| u.toLowerCase() == "@"+nickname.toLowerCase()
-							||u.toLowerCase() == nickname.replace("@", "").toLowerCase()) {
+					if(u.toLowerCase().equals(nickname.toLowerCase())
+							|| u.toLowerCase().equals( "@"+nickname.toLowerCase())
+							||u.toLowerCase().equals( nickname.replace("@", "").toLowerCase())) {
 						
 						user = u;
 						break;
