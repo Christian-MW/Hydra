@@ -72,6 +72,7 @@ public class HydraImpl implements HydraService{
 		String created_at ="";
 		String text="";
 		String url="https://twitter.com/{{username}}/status/{{idTweet}}";
+		Map <String, Object> dataObtenida = new HashMap<String,Object>();
 		try {
 
 			List<Searches> searches =utilities.getDataClients(); 
@@ -85,13 +86,29 @@ public class HydraImpl implements HydraService{
 				themeAndChannel = itemMR.get("tag").toString();
 				channelClient = itemMR.get("tag").toString().split(":")[1];
 				System.out.print("=> Client and Channel: " + itemMR.get("tag"));
+				
 				for (int i = 0; i < searches.size(); i++) {
-					if(themeAndChannel.equals(searches.get(i).getTheme()+":"+searches.get(i).getChannel()+":"+ searches.get(i).getSheet())) {
-						listMatchingRulesSrc.add(searches.get(i));
-						break;
+					try {
+						//Busquedas sin sheet
+						if(themeAndChannel.equals(searches.get(i).getTheme()+":"+searches.get(i).getChannel())) {
+							listMatchingRulesSrc.add(searches.get(i));
+							break;
+						}
+						//Busquedas con sheet campañas
+						if(themeAndChannel.equals(searches.get(i).getTheme()+":"+searches.get(i).getChannel()+":"+ searches.get(i).getSheet())) {
+							listMatchingRulesSrc.add(searches.get(i));
+							break;
+						}
+					}catch(Exception ex) {
+						log.info("Error al revisar camparar el tag");
+						log.info(new Gson().toJson(searches.get(i)));
+						log.error(ex);
 					}
 				}
 			}
+			
+			log.info("Total de búsquedas con las que el twit coincide");
+			log.info(new Gson().toJson(listMatchingRulesSrc));
 			
 			for (Searches src : listMatchingRulesSrc) {
 				channelClient = src.getChannel();
@@ -99,14 +116,18 @@ public class HydraImpl implements HydraService{
 				System.out.println(searches);
 				//Primer objeto DATA
 				for (Entry<String, Object> entry : request.getData().entrySet()) {
-					if (entry.getKey() == "id")
+					if (entry.getKey() == "id") {
 						postid = entry.getValue().toString();
+						dataObtenida.put("postid", postid);
+					}
 					if (entry.getKey() == "lang")
 						idioma = entry.getValue().toString();
 					if(entry.getKey() == "text")
 						message = entry.getValue().toString();
-					if(entry.getKey() == "author_id")
+					if(entry.getKey() == "author_id") {
 						authorid = entry.getValue().toString();
+						dataObtenida.put("authorid", authorid);
+					}
 					if(entry.getKey() == "created_at") {
 						 SimpleDateFormat formDate=new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 						 datePost=formDate.parse(entry.getValue().toString());
@@ -142,6 +163,8 @@ public class HydraImpl implements HydraService{
 								replyCountPost = (Integer) publicM.get("reply_count");
 								retweetCountPost = (Integer) publicM.get("retweet_count");
 								AllCountPost = likeCountPost + quoteCountPost + replyCountPost + retweetCountPost;
+								
+								dataObtenida.put("publicM", publicM);
 															
 							}
 						}
@@ -153,16 +176,21 @@ public class HydraImpl implements HydraService{
 						itemUsers = (ArrayList<HashMap<String, Object>>) entry.getValue();
 						for ( HashMap<String, Object> itmUs : itemUsers) {
 							String usrID = itmUs.get("id").toString();		
-							nickname = itmUs.get("username").toString();
-							urlPost = pathTW + itmUs.get("username").toString() + "/status/" + postid;
+							
 							if (authorid.equals(usrID)) {
+								
+								nickname = itmUs.get("username").toString();
+								dataObtenida.put("nickname", nickname);
+								
+								urlPost = pathTW + itmUs.get("username").toString() + "/status/" + postid;
+								dataObtenida.put("urlPost", urlPost);
 								//Esta es la data del usuario que posteo el TWEET
 								HashMap<String, Object> publicM = new HashMap<String, Object>();
 								publicM = (HashMap<String, Object>) itmUs.get("public_metrics");
 								followersUser = (Integer) publicM.get("followers_count");
 								isVerificated = (Boolean) itmUs.get("verified");
 								url = url.replace("{{username}}", (String) itmUs.get("username"));
-								
+								dataObtenida.put("userPublicMetrics", publicM);
 								try {
 									//ValidateLocationUser
 									if(Strings.isEmpty(locationUser)) {
@@ -182,6 +210,10 @@ public class HydraImpl implements HydraService{
 				}
 				
 				
+				dataObtenida.put("Location", locationUser);
+				dataObtenida.put("Languaje", idioma);
+				dataObtenida.put("TtypeTweet", typeTweet);
+				dataObtenida.put("VerifiedUser", isVerificated);
 				
 				
 				int valToComply = 0;
@@ -315,15 +347,18 @@ public class HydraImpl implements HydraService{
 
 				//Verificar accion para campañas
 				actionCampaing(src, nickname,valPost >= valToComply);
-				log.info("===> LA CAMPAÑA No cumple con todas las validasiones");
-				log.info("==>URL post Not SEND: " + url);
+				log.info("===> VALIDACIONES CON LAS QUE NO CUMPLIO LA CAMPAÑA");
+				url = url.replace("{{idTweet}}", postid);	
+				log.info("==>URL post Not SEND: " + urlPost);
+				log.info("Data obtenida del request ===============================>");
+				log.info(new Gson().toJson(dataObtenida));
 				log.info("Reglas que no se cumplieron ["+rulesFails.replaceAll(" ", ",")+"]");
 				if(Strings.isEmpty(src.getChannel())){
 					//No hay canal a donde enviar el mensaje, se cancela el proceso
 				}else {
 					//Se realiza el proceso para ver si se tiene que enviar a un canal
 					//Verificación final que se cumplan todas las validaciones
-					url = url.replace("{{idTweet}}", postid);					
+									
 					if (valPost >= valToComply) {					
 						//Envío del Tweet al canal		
 						//campaign.user.update;
@@ -425,53 +460,60 @@ public class HydraImpl implements HydraService{
 	private void actionCampaing(Searches src, String nickname, boolean fullRules ) {
 		log.info("############ actionCampaing");
 		try {
-			
-			if(Strings.isNotEmpty(src.getSheet())) {
-				String user = "";
-				String start = "";
-				if(src.getUsers().size() > 0) {
-					start = src.getUsers().get(0).substring(0, 1);
-				}
-				
-				for (String u : src.getUsers()) {
-					if(u.toLowerCase().equals(nickname.toLowerCase())
-							|| u.toLowerCase().equals( "@"+nickname.toLowerCase())
-							||u.toLowerCase().equals( nickname.replace("@", "").toLowerCase())) {
+			log.info(new Gson().toJson(src));
+			log.info(nickname);
+			log.info(fullRules);
+			if(fullRules) {
 						
-						user = u;
-						break;
-					}
-				}
-				
-				Map<String,String> rq = new HashMap<String, String>();
-				rq.put("sheet", src.getSheet());
-				if(fullRules) {
-					log.info("Reglas cumplidas");
-					//Posible nuevo usuario
-					if(user == "") {
-						//nuevo usuario
-						log.info("Es un usuario nuevo");
-						rq.put("type", "add");
-						rq.put("account", start+nickname);
-					}else {
-						log.info("Actualizando usuario");
-						rq.put("type", "update");
-						rq.put("account", user);
+				if(Strings.isNotEmpty(src.getSheet())) {
+					String user = "";
+					String start = "";
+					if(src.getUsers().size() > 0) {
+						start = src.getUsers().get(0).substring(0, 1);
 					}
 					
-					utilities.post(URL_CAMPAING_USER_UPDATE, new Gson().toJson(rq));
+					for (String u : src.getUsers()) {
+						if(u.toLowerCase().equals(nickname.toLowerCase())
+								|| u.toLowerCase().equals( "@"+nickname.toLowerCase())
+								||u.toLowerCase().equals( nickname.replace("@", "").toLowerCase())) {
+							
+							user = u;
+							break;
+						}
+					}
 					
-				}else {
-					if(user != "") { 
-						log.info("Actualizando usuario");
-						rq.put("type", "update");
-						rq.put("account", user);
+					Map<String,String> rq = new HashMap<String, String>();
+					rq.put("sheet", src.getSheet());
+					if(fullRules) {
+						log.info("Reglas cumplidas");
+						//Posible nuevo usuario
+						if(user == "") {
+							//nuevo usuario
+							log.info("Es un usuario nuevo");
+							rq.put("type", "add");
+							rq.put("account", start+nickname);
+						}else {
+							log.info("Actualizando usuario");
+							rq.put("type", "update");
+							rq.put("account", user);
+						}
+						
 						utilities.post(URL_CAMPAING_USER_UPDATE, new Gson().toJson(rq));
+						
 					}else {
-						log.info("Es un usuario nuevo pero no cumplio con las reglas!!!");
+						if(user != "") { 
+							log.info("Actualizando usuario");
+							rq.put("type", "update");
+							rq.put("account", user);
+							utilities.post(URL_CAMPAING_USER_UPDATE, new Gson().toJson(rq));
+						}else {
+							log.info("Es un usuario nuevo pero no cumplio con las reglas!!!");
+						}
 					}
-				}
-			}			
+				}		
+			}else {
+				log.info("No se cumplio con todas las reglas!!!");
+			}
 			
 		} catch (Exception e) {
 			// TODO: handle exception
