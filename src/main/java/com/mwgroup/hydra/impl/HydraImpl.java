@@ -463,8 +463,7 @@ public class HydraImpl implements HydraService{
 			log.info(new Gson().toJson(src));
 			log.info(nickname);
 			log.info(fullRules);
-			if(fullRules) {
-						
+		
 				if(Strings.isNotEmpty(src.getSheet())) {
 					String user = "";
 					String start = "";
@@ -511,9 +510,7 @@ public class HydraImpl implements HydraService{
 						}
 					}
 				}		
-			}else {
-				log.info("No se cumplio con todas las reglas!!!");
-			}
+			
 			
 		} catch (Exception e) {
 			// TODO: handle exception
