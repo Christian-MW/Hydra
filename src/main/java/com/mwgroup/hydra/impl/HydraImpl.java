@@ -35,6 +35,13 @@ public class HydraImpl implements HydraService{
 
 	 @Value("${url.campaign.user.update}")
 	 private String URL_CAMPAING_USER_UPDATE;
+	 
+	 @Value("${url.save.account}")
+	 private String URL_SAVE_ACCOUNT;
+
+	 @Value("${email.transaction}")
+	 private String EMAIL_TRANSACTION;
+	 
 	
 	public void sendPostTweet(SendPostTWRequest request) {
 		log.info("#############################___sendPostTweet");
@@ -72,6 +79,7 @@ public class HydraImpl implements HydraService{
 		String created_at ="";
 		String text="";
 		String url="https://twitter.com/{{username}}/status/{{idTweet}}";
+		String urlAccount="https://twitter.com/{{username}}";
 		Map <String, Object> dataObtenida = new HashMap<String,Object>();
 		try {
 
@@ -190,6 +198,7 @@ public class HydraImpl implements HydraService{
 								followersUser = (Integer) publicM.get("followers_count");
 								isVerificated = (Boolean) itmUs.get("verified");
 								url = url.replace("{{username}}", (String) itmUs.get("username"));
+								urlAccount = urlAccount.replace("{{username}}", (String) itmUs.get("username"));
 								dataObtenida.put("userPublicMetrics", publicM);
 								try {
 									//ValidateLocationUser
@@ -346,9 +355,20 @@ public class HydraImpl implements HydraService{
 					
 
 				//Verificar accion para campañas
-				actionCampaing(src, nickname,valPost >= valToComply);
-				log.info("===> VALIDACIONES CON LAS QUE NO CUMPLIO LA CAMPAÑA");
 				url = url.replace("{{idTweet}}", postid);	
+				 
+				AccountModel account = new AccountModel();
+				account.setFollowers(followersUser);
+				account.setLink(urlAccount);
+				account.setScreanName(dataObtenida.get("nickname").toString());
+				account.setSocialNetwork("Twitter");
+				account.setEmail(EMAIL_TRANSACTION);
+				account.setHashtag(src.getSearch());
+				
+				actionCampaing(src, nickname,valPost >= valToComply, account);
+				
+				log.info("===> VALIDACIONES CON LAS QUE NO CUMPLIO LA CAMPAÑA");
+				
 				log.info("==>URL post Not SEND: " + urlPost);
 				log.info("Data obtenida del request ===============================>");
 				log.info(new Gson().toJson(dataObtenida));
@@ -457,7 +477,7 @@ public class HydraImpl implements HydraService{
 	}
 	
 
-	private void actionCampaing(Searches src, String nickname, boolean fullRules ) {
+	private void actionCampaing(Searches src, String nickname, boolean fullRules, AccountModel account ) {
 		log.info("############ actionCampaing");
 		try {
 			log.info(new Gson().toJson(src));
@@ -480,8 +500,9 @@ public class HydraImpl implements HydraService{
 							break;
 						}
 					}
+					 
 					
-					Map<String,String> rq = new HashMap<String, String>();
+					Map<String,Object> rq = new HashMap<String, Object>();
 					rq.put("sheet", src.getSheet());
 					if(fullRules) {
 						log.info("Reglas cumplidas");
@@ -491,20 +512,31 @@ public class HydraImpl implements HydraService{
 							log.info("Es un usuario nuevo");
 							rq.put("type", "add");
 							rq.put("account", start+nickname);
+							rq.put("followers", ""+account.getFollowers());
+							rq.put("link", account.getLink());
+							account.setStatus("N");
 						}else {
 							log.info("Actualizando usuario");
 							rq.put("type", "update");
 							rq.put("account", user);
+							rq.put("followers", ""+account.getFollowers());
+							rq.put("link", account.getLink());
+							account.setStatus("X");
 						}
 						
 						utilities.post(URL_CAMPAING_USER_UPDATE, new Gson().toJson(rq));
+						addAccount(account);
 						
 					}else {
 						if(user != "") { 
 							log.info("Actualizando usuario");
 							rq.put("type", "update");
-							rq.put("account", user);
+							rq.put("account", user); 
+							rq.put("followers", account.getFollowers());
+							rq.put("link", account.getLink());
 							utilities.post(URL_CAMPAING_USER_UPDATE, new Gson().toJson(rq));
+							account.setStatus("X");
+							addAccount(account);
 						}else {
 							log.info("Es un usuario nuevo pero no cumplio con las reglas!!!");
 						}
@@ -516,6 +548,17 @@ public class HydraImpl implements HydraService{
 			// TODO: handle exception
 			log.info("Error en actionCampaing");
 			log.error(e);
+		}
+	}
+	
+	private void addAccount(AccountModel account) {
+		try {
+			log.info("Guarda la cuenta: "+account.getScreanName());
+			Map<String, Object> resultSave = utilities.post(URL_SAVE_ACCOUNT, new Gson().toJson(account));
+			log.info("Respuesta del guardado de la cuenta: "+account.getScreanName());
+			log.info(new Gson().toJson(resultSave));
+		} catch (Exception e) {
+			// TODO: handle exception
 		}
 	}
 	
